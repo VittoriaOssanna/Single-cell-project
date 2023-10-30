@@ -1,11 +1,15 @@
 ---
-title: "Experience: single cell RNA-Seq analysis"
+title: "Single cell Project"
+author: "Vittoria Ossanna"
 output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: sentence
 ---
 
 #### Load the necessary packages to perform the analysis
 
-```{r load_packages,warning=F,message=F}
+```{r, warning = F, message = F}
 
 library(tidyverse) # collection of packages for tidy data analysis (ggplot, dplyr, ...)
 library(Seurat) # single cell analysis (Check that the version is at least 4.0.0)
@@ -14,7 +18,122 @@ library(patchwork) # combine separate ggplots into the same graphic
 
 ### Reading the data
 
-```{r}
-data <- readRDS("./data/VPV.rds")
+In this step, I am loading data from the file VPV.rds, a file containing an unknown sample obtained from either mice or human tissues.
+After tissue dissociation, cells were sorted by FACS and scRNA-seq libraries were prepared with the Smart-Seq2 protocol/platform.
+The starting point is a digital count matrix with mouse or human genes as features.
+
+```{r, warning = F, message = F}
+data.raw <- readRDS("./data/VPV.rds")
 ```
 
+In this step, I am initializing the Seurat object with the digital count matrix.
+We are starting with a count table containing 4148 samples and 23433 features (as genes).
+
+```{r, warning = F, message = F}
+data <- CreateSeuratObject(counts = data.raw)
+
+data
+```
+
+# 1. Quality control and filtering
+
+In the current Section, I use standard methods of quality control and filtering to obtain a cleaned matrix of data.
+
+## Filtering based on the percentage of mitocondrial, ribosomial and hemoglobin genes
+
+We filter out genes with increased number of genes that map to a mitocondrial genome because low-quality or dying cells often exhibit extensive mitochondrial contamination.
+In the same manner we will calculate the proportion gene expression that comes from ribosomal proteins.
+Finally, with the same method we will calculate proportion hemoglobin genes, which can give an indication of red blood cell contamination.
+I believe that this control has no use in this project because I do not know the composition of my sample, therefore, avoiding to consider hemoglobin-related genes could lead to errors.
+
+As indicated in the assignment, mitochondrial genes might be missing from the count matrix, tehrefore I used spike-in RNAs, all starting with "ERCC", as an alternative quality control.
+ERCC stands for External RNA Controls Consortium.
+
+```{r qc_metrics, warning=F, message=F}
+data[["percent_mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
+data[["percent_ribo"]] <- PercentageFeatureSet(data, "^RP[SL]")
+# data[["percent_hb"]] <- PercentageFeatureSet(data, "^HB[^(P)]")
+max(data[["percent_mt"]])
+max(data[["percent_ribo"]])
+# max(data[["percent_hb"]])
+
+data[["percent_ERCC"]] <- PercentageFeatureSet(data, "^ERCC")
+data[["percent_ERCC"]]
+```
+
+From this analysis, it seems that there is no instance that correspond to any of these genes.
+Anyhow, the alternative filtering based on ERCC seems to produce non-null values.
+I will use in the next steps this percentage for filtering.
+
+### Plot QC for ERCC genes
+
+Now we can plot some of the QC-features as violin plots.
+
+```{r}
+p1<- VlnPlot(data.filt, features = c("nFeature_RNA", "nCount_RNA", "percent_ERCC"), ncol = 3, pt.size = 0.01)
+
+p1
+```
+
+### Updating dataset with ERCC filtering
+
+This chunk is dedicate to the update of the data excluding all cells that present more than 5% of genes belonging ro ERCC.
+
+Write to toma for the percentage
+
+```{r}
+data <- subset(data, percent_ERCC < 5)
+```
+
+## Filtering based on unique number of genes detected in each cell and total number of molecules detected within a cell
+
+A standard approach is to filter cells with low amount of reads as well as genes that are present in at least a certain amount of cells.
+Here we will only consider cells with at least 200 detected genes and genes need to be expressed in at least 3 cells.
+
+```{r}
+# selecting all features and cells with minimum requirement
+selected_c <- WhichCells(data, expression = nFeature_RNA > 200)
+selected_f <- rownames(data)[Matrix::rowSums(data) > 3]
+
+data.filt <- subset(data, features = selected_f, cells = selected_c)
+dim(data.filt)
+```
+
+Extremely high number of detected genes could indicate doublets.
+However, depending on the cell type composition in my sample, I may have cells with higher number of genes (and also higher counts) from one cell type.
+
+I found these thresholds online [here](https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_01_qc.html#Calculate_QC) I need to write to toma
+
+```{r}
+#eliminate cells with an increased number of reads
+high.data1 <- WhichCells(data.filt, expression = nFeature_RNA > 5000)
+
+# remove these cells
+final.data <- setdiff(WhichCells(data.filt),c(high.data1))
+
+# check number of cells
+length(final.data)
+
+# update the dataset with only genes that passed the filetring
+data.filt <- data.filt[, colnames(data.filt) %in% final.data]
+
+# check dimension of final filtered dataset
+dim(data.filt)
+
+```
+
+## Filtering considerations
+
+From the filtering based on presence of ERCC (excluding all cells that present more than 5% of ERCC transcripts detected) and the filtering based on a lower bound of counts (for both cells and genes) and upper bound (associated to Doublets), I recovered a dataset that contains 2284 cells and 22012 features.
+
+# 2. Normalization, identification of variable features, scaling
+
+# 3. Dimensionality reduction
+
+# 4. Clustering
+
+# 5. Identification of marker genes
+
+# 6. Cell cycle analysis
+
+# 7. Annotation
