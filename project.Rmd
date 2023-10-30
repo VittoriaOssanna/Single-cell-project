@@ -1,1 +1,20 @@
-install.packages("ggplot2")
+---
+title: "Experience: single cell RNA-Seq analysis"
+output: html_notebook
+---
+
+#### Load the necessary packages to perform the analysis
+
+```{r load_packages,warning=F,message=F}
+
+library(tidyverse) # collection of packages for tidy data analysis (ggplot, dplyr, ...)
+library(Seurat) # single cell analysis (Check that the version is at least 4.0.0)
+library(patchwork) # combine separate ggplots into the same graphic
+```
+
+### Reading the data
+
+```{r}
+data <- readRDS("./data/VPV.rds")
+```
+
