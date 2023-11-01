@@ -32,7 +32,7 @@ We are starting with a count table containing 4148 samples and 23433 features (a
 ```{r, warning = F, message = F}
 data <- CreateSeuratObject(counts = data.raw)
 
-data
+# data
 ```
 
 # 1. Quality control and filtering
@@ -58,22 +58,12 @@ max(data[["percent_ribo"]])
 # max(data[["percent_hb"]])
 
 data[["percent_ERCC"]] <- PercentageFeatureSet(data, "^ERCC")
-data[["percent_ERCC"]]
+# data[["percent_ERCC"]]
 ```
 
 From this analysis, it seems that there is no instance that correspond to any of these genes.
 Anyhow, the alternative filtering based on ERCC seems to produce non-null values.
 I will use in the next steps this percentage for filtering.
-
-### Plot QC for ERCC genes
-
-Now we can plot some of the QC-features as violin plots.
-
-```{r}
-p1<- VlnPlot(data.filt, features = c("nFeature_RNA", "nCount_RNA", "percent_ERCC"), ncol = 3, pt.size = 0.01)
-
-p1
-```
 
 ### Updating dataset with ERCC filtering
 
@@ -96,7 +86,7 @@ selected_c <- WhichCells(data, expression = nFeature_RNA > 200)
 selected_f <- rownames(data)[Matrix::rowSums(data) > 3]
 
 data.filt <- subset(data, features = selected_f, cells = selected_c)
-dim(data.filt)
+# dim(data.filt)
 ```
 
 Extremely high number of detected genes could indicate doublets.
@@ -112,13 +102,31 @@ high.data1 <- WhichCells(data.filt, expression = nFeature_RNA > 5000)
 final.data <- setdiff(WhichCells(data.filt),c(high.data1))
 
 # check number of cells
-length(final.data)
+# length(final.data)
 
 # update the dataset with only genes that passed the filetring
 data.filt <- data.filt[, colnames(data.filt) %in% final.data]
 
 # check dimension of final filtered dataset
-dim(data.filt)
+# dim(data.filt)
+
+```
+
+### Plot QC for ERCC genes
+
+Now we can plot some of the QC-features to get visual insights.
+
+```{r}
+p1<- VlnPlot(data.filt, features = c("nFeature_RNA", "nCount_RNA", "percent_ERCC"), ncol = 3, pt.size = 0.01)
+
+p1
+```
+
+```{r qc_scatter, warning=F, message=F}
+
+plot1 <- FeatureScatter(data.filt, feature1 = "nCount_RNA", feature2 = "percent_ERCC")
+plot2 <- FeatureScatter(data.filt, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
 
 ```
 
@@ -128,7 +136,123 @@ From the filtering based on presence of ERCC (excluding all cells that present m
 
 # 2. Normalization, identification of variable features, scaling
 
+## Data Normalization
+
+In the realm of data analysis, ensuring proper normalization for both inter-sample and intra-sample comparisons is crucial to obtain unbiased results.
+To achieve this goal in the current project, I employ a Log-Normalization method.
+This approach normalizes the measurement of feature expression for each cell based on the total expression, applies a scaling factor, and subsequently transforms the results using a logarithmic function.
+The resulting normalized data is stored within the `data.filt[["RNA"]]@data` container.
+
+```{r, warning = F, message=F}
+
+data.filt <- NormalizeData(data.filt, 
+                           normalization.method = "LogNormalize", 
+                           scale.factor = 10000)
+
+# data.filt[["RNA"]]@data[1:10, 1:30]
+
+```
+
+## Feature Selection
+
+In this section, I isolate a subset of features characterized by significant cell-to-cell variability.
+Concentrating on these genes in subsequent analyses enhances the ability to emphasize biological signals within single-cell datasets.
+
+```{r, message = F}
+data.filt <- FindVariableFeatures(data.filt, 
+                                  selection.method = "vst", 
+                                  nfeatures = 2000)
+
+top10 <- head(VariableFeatures(data.filt), 10)
+
+plot1 <- VariableFeaturePlot(data.filt)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = T)
+
+plot2
+
+```
+
+## Scaling
+
+In this section, i perform a linear transformation to the expresison levels of each gene.
+This is a standard pre-processing step which is often used before performing dimensionality reduction.
+Since - at the end of the day - we are interested in the genes which are expressed in the most different way - we perform this scaling only on the top 2000 genes (identified before).
+
+```{r, warning= F, message=F}
+all_genes <- rownames(data.filt)
+
+data.filt <- ScaleData(data.filt, 
+                       fetaures = all_genes)
+
+# data.filt[["RNA"]]@scale.data[1:5, 1:10]
+```
+
 # 3. Dimensionality reduction
+
+Dimensionality reduction techniques are employed to reduce data complexity in downstream analyses (e.g. clustering) and for data visualization.
+
+## PCA
+
+PCA, or Principal Component Analysis, is a technique used to simplify complex data by transforming it into a lower-dimensional representation while retaining as much original information as possible.
+It achieves this by finding a set of new variables called principal components that are uncorrelated and ranked by the amount of variance they explain.
+PCA is useful for reducing data dimensionality, preserving essential information, and revealing underlying patterns.
+
+```{r, message=F, warning=F}
+data.filt <- RunPCA(data.filt, 
+                    features = VariableFeatures(object = data.filt))
+
+DimPlot(data.filt, reduction = "pca",label = F)
+```
+
+PCA is highly interpretable and efficient, nevertheless it is often not a good idea to use such dimentionality reduction method with Single Cell data, due to their high sparsity and non-linear stucture of the data.
+For this reason, I use two different non-linear method in the next section to overcome this problem.
+
+### Define number of relevant components
+
+For next steps, I need to derive a proper number of dimensions to use.
+In order to do so, I use the euristic method of the elbow plot: a ranking of principle components based on the percentage of variance explained by each one.
+
+```{r}
+ElbowPlot(data.filt, ndims = 30)
+```
+
+From this plot, we cannot clearly see an elbow, but we can see a slow decrease of the deviation from component 7 on.
+Anyway, I consider a more conservative approach including in the next steps 14 dimensions.
+Or maybe I can keep 7?
+I REALLY DO NOT KNOW, I will try both and see what gives better results.
+
+## t-SNE
+
+t-SNE (t-Distributed Stochastic Neighbor Embedding) is a dimensionality reduction technique used for visualizing complex high-dimensional data.
+It works by calculating pairwise similarities between data points, emphasizing close similarities and using Gaussian distributions to define relationships.
+It then maps the data to a lower-dimensional space (typically two dimensions) while preserving these pairwise similarities.
+t-SNE employs an iterative optimization process to position data points in the lower-dimensional map, ensuring that similar data points remain close, while dissimilar ones are separated.
+This makes it a valuable tool for exploring and visualizing intricate data structures and identifying clusters or patterns within the data.
+
+```{r}
+data.filt <- RunTSNE(data.filt, 
+                     dims = 1:7)
+DimPlot(data.filt, reduction = "tsne")
+```
+
+## UMAP
+
+UMAP (Uniform Manifold Approximation and Projection) is another dimensionality reduction technique used for visualizing and exploring high-dimensional data.
+It shares similarities with t-SNE but offers certain advantages.
+UMAP constructs a low-dimensional representation by first modeling the data as a topological graph.
+It focuses on preserving both local and global relationships among data points, leading to more balanced embeddings.
+UMAP is known for its efficiency and ability to handle larger datasets compared to t-SNE.
+It has gained popularity in various fields for tasks such as visualization, clustering, and data analysis, making it a valuable tool for uncovering patterns and structures within complex datasets.
+From 2018, UMAP is considered the gold standard for Single Cell analysis.
+In addition, it preserves better than t-SNE the local and global structure of the data.
+Nevertheless, UMAP results decrease their interpretability.
+
+```{r, message=F, warning=F}
+data.filt <- RunUMAP(data.filt,
+                     dims = 1:7)
+
+DimPlot(data.filt, reduction = "umap")
+```
 
 # 4. Clustering
 
