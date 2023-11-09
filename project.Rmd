@@ -95,8 +95,10 @@ However, depending on the cell type composition in my sample, I may have cells w
 I found these thresholds online [here](https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_01_qc.html#Calculate_QC) I need to write to toma
 
 ```{r}
-#eliminate cells with an increased number of reads
-high.data1 <- WhichCells(data.filt, expression = nFeature_RNA > 5000)
+# eliminate cells with an increased number of reads
+# to define the upper bound, we get the median number of counts. We wxclude from the final evaluation all cells that present a number of Counts greater than twice the median number of counts.
+
+high.data1 <- WhichCells(data.filt, expression = nCount_RNA > median(data.filt$nCount_RNA))
 
 # remove these cells
 final.data <- setdiff(WhichCells(data.filt),c(high.data1))
@@ -117,7 +119,7 @@ data.filt <- data.filt[, colnames(data.filt) %in% final.data]
 Now we can plot some of the QC-features to get visual insights.
 
 ```{r}
-p1<- VlnPlot(data.filt, features = c("nFeature_RNA", "nCount_RNA", "percent_ERCC"), ncol = 3, pt.size = 0.01)
+p1<- VlnPlot(data.filt, features = c("nFeature_RNA", "nCount_RNA", "percent_ERCC"), ncol = 2, pt.size = 0.01)
 
 p1
 ```
