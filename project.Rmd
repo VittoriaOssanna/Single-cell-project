@@ -286,26 +286,31 @@ We make use of differential expression analysis to identify marker genes. I will
 
 markers <- FindAllMarkers(data.filt, 
                                only.pos = TRUE, 
-                               min.pct = 0.1, 
-                               logfc.threshold = 0.1)
+                               min.pct = 0.25, 
+                               logfc.threshold = 0.25)
 
-markers %>%
+top_markers <- markers %>%
     group_by(cluster) %>%
     # order(pbmc_markers$p_val_adj) %>%
-    slice_max(n=3,order_by=avg_log2FC)
+    slice_max(n=1,order_by=avg_log2FC)
+
+list_of_markers = top_markers$gene
 
 ```
+
+
 Differently to what did in the tutorial, I deciced to decrease both min.ptc and logfc.threshold to 0.1. The first parameter it only has the function of making the process faster (I have all the time in the world), the second - if increased - also speeds up computation, but my decreasing it we can avoid missing weaker signal. Overall, lower values slow down computation but gets more accurate. 
+IM NOT SURE THIS IS VALID, ASK TOMA
 
 ## Visualizing some marker genes
 
-Here, I am plotting a graphic visualization of some of the genes found in the previous summary that exhibit extremely relevant adjusted p-values and high log-fild change.
+Here, I am plotting a graphic visualization of some of the genes found in the previous summary that exhibit extremely relevant adjusted p-values and high log-fold change.
 
 ```{r}
-VlnPlot(data.filt, features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"), pt.size = 0)
-# RidgePlot(data.filt,features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"))
-FeaturePlot(data.filt, features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"))
-DotPlot(data.filt, features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"))
+VlnPlot(data.filt, features = list_of_markers, pt.size = 0)
+# RidgePlot(data.filt,features = list_of_markers)
+FeaturePlot(data.filt, features = list_of_markers)
+DotPlot(data.filt, features = list_of_markers)
 
 ```
 
