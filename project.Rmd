@@ -215,13 +215,14 @@ For next steps, I need to derive a proper number of dimensions to use.
 In order to do so, I use the euristic method of the elbow plot: a ranking of principle components based on the percentage of variance explained by each one.
 
 ```{r}
-ElbowPlot(data.filt, ndims = 30)
+ElbowPlot(data.filt, ndims = 50)
 ```
 
 From this plot, we cannot clearly see an elbow, but we can see a slow decrease of the deviation from component 7 on.
 Anyway, I consider a more conservative approach including in the next steps 14 dimensions.
 Or maybe I can keep 7?
 I REALLY DO NOT KNOW, I will try both and see what gives better results.
+From what I understand, the usage of tSNE or UMAP is simply slower than PCA, for this reason we use a number of relevant dimensions that we got from PCA in order to fasten up their processes. Since the overall dataset would consists in thousands of features, it does not make much sense only to use 7 (even in the elbow is there). If I use 30 or 50 feature, the process would be fasten up anyway woth a great improvement, without losing to much information.
 
 ## t-SNE
 
@@ -233,7 +234,7 @@ This makes it a valuable tool for exploring and visualizing intricate data struc
 
 ```{r}
 data.filt <- RunTSNE(data.filt, 
-                     dims = 1:7)
+                     dims = 1:50)
 DimPlot(data.filt, reduction = "tsne")
 ```
 
@@ -251,15 +252,65 @@ Nevertheless, UMAP results decrease their interpretability.
 
 ```{r, message=F, warning=F}
 data.filt <- RunUMAP(data.filt,
-                     dims = 1:7)
+                     dims = 1:50)
 
 DimPlot(data.filt, reduction = "umap")
 ```
 
 # 4. Clustering
 
+The clustering is based on a number of component defined during the PCA. The function implied construct a graph where each cell correspod to a node, and tries to find cliques where the archs are constructed based on the similarity of the expression pattern of two cells. To cluster the cells we run modularity optimization to group cells into clusters.
+
+```{r, warning=F, message=F}
+
+data.filt <- FindNeighbors(data.filt, dims = 1:50)
+data.filt <- FindClusters(data.filt, resolution = 0.5)
+
+head(Idents(data.filt), 5)
+
+```
+
+We now plot again PCA, tSNE and UMAP with labels from clustering to graphically visualize the clustering procedure.
+
+```{r}
+DimPlot(data.filt, reduction = "pca")
+DimPlot(data.filt, reduction = "tsne")
+DimPlot(data.filt, reduction = "umap")
+```
+
 # 5. Identification of marker genes
 
+We make use of differential expression analysis to identify marker genes. I will perform a differential expression analysis of each group against every other group (1 vs all). 
+
+```{r all_markers, warning=F, message=F}
+
+markers <- FindAllMarkers(data.filt, 
+                               only.pos = TRUE, 
+                               min.pct = 0.1, 
+                               logfc.threshold = 0.1)
+
+markers %>%
+    group_by(cluster) %>%
+    # order(pbmc_markers$p_val_adj) %>%
+    slice_max(n=3,order_by=avg_log2FC)
+
+```
+Differently to what did in the tutorial, I deciced to decrease both min.ptc and logfc.threshold to 0.1. The first parameter it only has the function of making the process faster (I have all the time in the world), the second - if increased - also speeds up computation, but my decreasing it we can avoid missing weaker signal. Overall, lower values slow down computation but gets more accurate. 
+
+## Visualizing some marker genes
+
+Here, I am plotting a graphic visualization of some of the genes found in the previous summary that exhibit extremely relevant adjusted p-values and high log-fild change.
+
+```{r}
+VlnPlot(data.filt, features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"), pt.size = 0)
+# RidgePlot(data.filt,features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"))
+FeaturePlot(data.filt, features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"))
+DotPlot(data.filt, features = c("2310079G19Rik", "Hist1h3b", "E130012A19Rik", "Matk", "Spink3"))
+
+```
+
 # 6. Cell cycle analysis
+
+
 
 # 7. Annotation
