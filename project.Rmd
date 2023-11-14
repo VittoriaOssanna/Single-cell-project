@@ -359,9 +359,63 @@ DimPlot(marrow, reduction="pca")
 
 # 7. Annotation
 
+We now try to annotate the cell with some annotated dataset. 
 
+For each cell in the unknown dataset:
+1. Compute the Spearman correlation between its expression profile and that of each reference sample (measure of robustness to batch effects across datasets)
+2. Define per-label score as a fixed quantile (by default, 0.8) of the correlations across all samples with that label (accounts for differences in the number of reference samples for each label)
+3. Repeat the score calculation for all labels in the reference dataset. The label with the highest score is used as SingleR’s prediction for this cell.
 
+### load required libraries
 
+```{r load_packages,warning=F,message=F, eval =F}
+library("SingleR")
+library("celldex") 
+library("SummarizedExperiment") 
+library("Seurat")
+```
+
+### load reference dataset
+
+Since I do not know if this dataset comes from a human or a mouse, which other dataset should I load?
+
+```{r load_reference,warning=F,message=F}
+# Loading Human Primary Cell Atlas dataset (Mabbott et al. 2013) as the reference 
+ref.data.human <- celldex::HumanPrimaryCellAtlasData()
+ref.data.mice <- celldex::MouseRNAseqData()
+```
+
+Converting the dataset into a sinclecellexperiment object, needed for the analysis.
+
+```{r}
+sce.data <- as.SingleCellExperiment(DietSeurat(data.filt))
+```
+
+## Predict cell type
+
+We will try to match my dataset against both human and mice annotations, because you never know. 
+
+```{r cell_type_prediction,warning=F,message=F}
+
+predictions.human <- SingleR(test=sce.data, 
+    ref=ref.data.human, labels=ref.data.human$label.main, fine.tune = TRUE, prune = TRUE) 
+
+predictions.mice <- SingleR(test=sce.data, 
+    ref=ref.data.mice, labels=ref.data.mice$label.main, fine.tune = TRUE, prune = TRUE) 
+```
+
+Once assigned a label, we now use a heatplot to visualize the results.
+
+```{r scores_heatmap, warning=F, message=F, fig.width=8, fig.height=5}
+
+plotScoreHeatmap(predictions.human)
+plotScoreHeatmap(predictions.mice)
+
+```
+
+From these results, we can probably guess that the sample comes from mice (because more than half of the cells do not show any expression pattern that matches human annotations). I do not know if this procedure is valid to assess this stuff. 
+Could this be liver tissue?
+I think so.
 
 
 
