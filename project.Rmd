@@ -316,6 +316,52 @@ DotPlot(data.filt, features = list_of_markers)
 
 # 6. Cell cycle analysis
 
+The presence of cell cycle within scRNAseq data may introduce variability. If the experiment does not focus on the cell cycle, strategies can be employed to address this heterogeneity. In Seurat, handling cell cycle effects involves computing phase scores using established markers and then removing them during data pre-processing to alleviate the impact of cell cycle heterogeneity on scRNA-seq data.
+
+### Load marker genes
+
+We use two list of marked (denoting G2/M and S cell phase) which will be use to find matches against the cell from our dataset
+
+```{r, warning = F, message=F}
+
+s_genes <- cc.genes$s.genes
+g2m_genes <- cc.genes$g2m.genes
+
+```
+
+# Assign cell-cycle score and visualize markers
+
+We assign to each cell a score. based on presence or absence of the expression of the markers loaded previously. 
+
+```{r}
+
+data.filt <- CellCycleScoring(data.filt, s.features = s_genes, g2m.features = g2m_genes, set.ident = T)
+head(data.filt[[]], 10)
+
+```
+
+```{r ,warning=F,message=F}
+RidgePlot(data.filt, features = c("MCM5", "PCNA", "HMGB2", "CDK1"), ncol = 2)
+```
+
+PROBLEM: I have no matches between the marker list and the features in my data. How does it calculate the score? (there is a score)
+
+Also this plot does not work because we do not have those specific markers in our feature set
+Running a PCA on cell cycle genes confirms that cells separate entirely by phase
+
+```{r ,warning=F,message=F}
+
+data.filt <- RunPCA(data.filt, features = c(s_genes, g2m_genes),verbose=F)
+DimPlot(marrow, reduction="pca")
+
+```
 
 
 # 7. Annotation
+
+
+
+
+
+
+
