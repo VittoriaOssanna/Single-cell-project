@@ -31,8 +31,6 @@ We are starting with a count table containing 4148 samples and 23433 features (a
 
 ```{r, warning = F, message = F}
 data <- CreateSeuratObject(counts = data.raw)
-
-# data
 ```
 
 # 1. Quality control and filtering
@@ -46,7 +44,7 @@ In the same manner we will calculate the proportion gene expression that comes f
 Finally, with the same method we will calculate proportion hemoglobin genes, which can give an indication of red blood cell contamination.
 I believe that this control has no use in this project because I do not know the composition of my sample, therefore, avoiding to consider hemoglobin-related genes could lead to errors.
 
-As indicated in the assignment, mitochondrial genes might be missing from the count matrix, tehrefore I used spike-in RNAs, all starting with "ERCC", as an alternative quality control.
+As indicated in the assignment, mitochondrial genes might be missing from the count matrix, therefore I used spike-in RNAs, all starting with "ERCC", as an alternative quality control.
 ERCC stands for External RNA Controls Consortium.
 
 ```{r qc_metrics, warning=F, message=F}
@@ -58,7 +56,7 @@ max(data[["percent_ribo"]])
 # max(data[["percent_hb"]])
 
 data[["percent_ERCC"]] <- PercentageFeatureSet(data, "^ERCC")
-# data[["percent_ERCC"]]
+max(data[["percent_ERCC"]])
 ```
 
 From this analysis, it seems that there is no instance that correspond to any of these genes.
@@ -67,9 +65,7 @@ I will use in the next steps this percentage for filtering.
 
 ### Updating dataset with ERCC filtering
 
-This chunk is dedicate to the update of the data excluding all cells that present more than 5% of genes belonging ro ERCC.
-
-Write to toma for the percentage
+This chunk is dedicate to the update of the data excluding all cells that present more than 5% of genes belonging to ERCC.
 
 ```{r}
 data <- subset(data, percent_ERCC < 5)
@@ -92,25 +88,33 @@ data.filt <- subset(data, features = selected_f, cells = selected_c)
 Extremely high number of detected genes could indicate doublets.
 However, depending on the cell type composition in my sample, I may have cells with higher number of genes (and also higher counts) from one cell type.
 
-I found these thresholds online [here](https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_01_qc.html#Calculate_QC) I need to write to toma
+I found these thresholds online [here](https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_01_qc.html#Calculate_QC)
 
 ```{r}
 # eliminate cells with an increased number of reads
 # to define the upper bound, we get the median number of counts. We wxclude from the final evaluation all cells that present a number of Counts greater than twice the median number of counts.
+# high.data1 <- WhichCells(data.filt, expression = nCount_RNA > 2 * median(data.filt$nCount_RNA))
+```
 
-high.data1 <- WhichCells(data.filt, expression = nCount_RNA > median(data.filt$nCount_RNA))
+how toma likes it: we plot a violin pf the counts, and we expect three areas: one in which we have the desired data, one in which we have too little counts, and one in which we have artifacts, as doublets. We use graphical insignt from this plot to find a threshold for doublets.
+
+```{r}
+dim(data.filt)
+
+# from this plot we can define a lower and upper bound for out cleaning
+VlnPlot(data.filt, features = c("nCount_RNA"), y.max = 3e+6) & geom_hline(yintercept = 750000) & geom_hline(yintercept = 100000)
+
+high.data <- WhichCells(data.filt, expression = nCount_RNA > 750000)
+low_data <- WhichCells(data.filt, expression = nCount_RNA < 100000)
 
 # remove these cells
-final.data <- setdiff(WhichCells(data.filt),c(high.data1))
-
-# check number of cells
-# length(final.data)
+final.data <- setdiff(WhichCells(data.filt),c(high.data, low_data))
 
 # update the dataset with only genes that passed the filetring
 data.filt <- data.filt[, colnames(data.filt) %in% final.data]
 
 # check dimension of final filtered dataset
-# dim(data.filt)
+dim(data.filt)
 
 ```
 
@@ -222,7 +226,9 @@ From this plot, we cannot clearly see an elbow, but we can see a slow decrease o
 Anyway, I consider a more conservative approach including in the next steps 14 dimensions.
 Or maybe I can keep 7?
 I REALLY DO NOT KNOW, I will try both and see what gives better results.
-From what I understand, the usage of tSNE or UMAP is simply slower than PCA, for this reason we use a number of relevant dimensions that we got from PCA in order to fasten up their processes. Since the overall dataset would consists in thousands of features, it does not make much sense only to use 7 (even in the elbow is there). If I use 30 or 50 feature, the process would be fasten up anyway woth a great improvement, without losing to much information.
+From what I understand, the usage of tSNE or UMAP is simply slower than PCA, for this reason we use a number of relevant dimensions that we got from PCA in order to fasten up their processes.
+Since the overall dataset would consists in thousands of features, it does not make much sense only to use 7 (even in the elbow is there).
+If I use 30 or 50 feature, the process would be fasten up anyway woth a great improvement, without losing to much information.
 
 ## t-SNE
 
@@ -259,7 +265,9 @@ DimPlot(data.filt, reduction = "umap")
 
 # 4. Clustering
 
-The clustering is based on a number of component defined during the PCA. The function implied construct a graph where each cell correspod to a node, and tries to find cliques where the archs are constructed based on the similarity of the expression pattern of two cells. To cluster the cells we run modularity optimization to group cells into clusters.
+The clustering is based on a number of component defined during the PCA.
+The function implied construct a graph where each cell correspod to a node, and tries to find cliques where the archs are constructed based on the similarity of the expression pattern of two cells.
+To cluster the cells we run modularity optimization to group cells into clusters.
 
 ```{r, warning=F, message=F}
 
@@ -280,7 +288,8 @@ DimPlot(data.filt, reduction = "umap")
 
 # 5. Identification of marker genes
 
-We make use of differential expression analysis to identify marker genes. I will perform a differential expression analysis of each group against every other group (1 vs all). 
+We make use of differential expression analysis to identify marker genes.
+I will perform a differential expression analysis of each group against every other group (1 vs all).
 
 ```{r all_markers, warning=F, message=F}
 
@@ -298,8 +307,9 @@ list_of_markers = top_markers$gene
 
 ```
 
-
-Differently to what did in the tutorial, I deciced to decrease both min.ptc and logfc.threshold to 0.1. The first parameter it only has the function of making the process faster (I have all the time in the world), the second - if increased - also speeds up computation, but my decreasing it we can avoid missing weaker signal. Overall, lower values slow down computation but gets more accurate. 
+Differently to what did in the tutorial, I deciced to decrease both min.ptc and logfc.threshold to 0.1.
+The first parameter it only has the function of making the process faster (I have all the time in the world), the second - if increased - also speeds up computation, but my decreasing it we can avoid missing weaker signal.
+Overall, lower values slow down computation but gets more accurate.
 IM NOT SURE THIS IS VALID, ASK TOMA
 
 ## Visualizing some marker genes
@@ -316,22 +326,41 @@ DotPlot(data.filt, features = list_of_markers)
 
 # 6. Cell cycle analysis
 
-The presence of cell cycle within scRNAseq data may introduce variability. If the experiment does not focus on the cell cycle, strategies can be employed to address this heterogeneity. In Seurat, handling cell cycle effects involves computing phase scores using established markers and then removing them during data pre-processing to alleviate the impact of cell cycle heterogeneity on scRNA-seq data.
+The presence of cell cycle within scRNAseq data may introduce variability.
+If the experiment does not focus on the cell cycle, strategies can be employed to address this heterogeneity.
+In Seurat, handling cell cycle effects involves computing phase scores using established markers and then removing them during data pre-processing to alleviate the impact of cell cycle heterogeneity on scRNA-seq data.
+
+### Conversion function
+
+Since I am working with mouse genes, I need to convert (sooner or later) gene names from upper to lower case (except the first letter).
+Here is a function to do this which will be used during the next steps.
+
+```{r}
+convertFirstLetterToUpper <- function(inputVector) {
+  result <- sapply(inputVector, function(x) {
+    paste0(toupper(substr(x, 1, 1)), tolower(substr(x, 2, nchar(x))))
+  })
+  return(result)
+}
+```
 
 ### Load marker genes
 
-We use two list of marked (denoting G2/M and S cell phase) which will be use to find matches against the cell from our dataset
+We use two list of marked (denoting G2/M and S cell phase) which will be use to find matches against the cell from our dataset and convert them into lower case (except first letter).
 
 ```{r, warning = F, message=F}
 
 s_genes <- cc.genes$s.genes
+s_genes <- convertFirstLetterToUpper(s_genes)
 g2m_genes <- cc.genes$g2m.genes
+g2m_genes <- convertFirstLetterToUpper(g2m_genes)
 
 ```
 
 # Assign cell-cycle score and visualize markers
 
-We assign to each cell a score. based on presence or absence of the expression of the markers loaded previously. 
+We assign to each cell a score.
+based on presence or absence of the expression of the markers loaded previously.
 
 ```{r}
 
@@ -341,30 +370,32 @@ head(data.filt[[]], 10)
 ```
 
 ```{r ,warning=F,message=F}
-RidgePlot(data.filt, features = c("MCM5", "PCNA", "HMGB2", "CDK1"), ncol = 2)
+RidgePlot(data.filt, features = c("Mcm5", "Pcna", "Hhgb2", "Cdk1"), ncol = 2)
 ```
 
-PROBLEM: I have no matches between the marker list and the features in my data. How does it calculate the score? (there is a score)
-
-Also this plot does not work because we do not have those specific markers in our feature set
-Running a PCA on cell cycle genes confirms that cells separate entirely by phase
+Also this plot does not work because we do not have those specific markers in our feature set Running a PCA on cell cycle genes confirms that cells separate entirely by phase
 
 ```{r ,warning=F,message=F}
 
 data.filt <- RunPCA(data.filt, features = c(s_genes, g2m_genes),verbose=F)
-DimPlot(marrow, reduction="pca")
+DimPlot(data.filt, reduction="pca")
+table(data.filt$Phase)
 
 ```
 
+By performing a PCA only on genes that are markers for s and g2 phase, we see that the majority of the cells are associated with G1 phase, as for the rest, we have a comparable number of cells in S and in G2 phase.
+From the PCA, we can derive that most of the cells (even if not in G1 phase) are spatially close to cells in G1.
+Also, we clarely see a hyperplane separating S and G2 phase (horizontally).
 
 # 7. Annotation
 
-We now try to annotate the cell with some annotated dataset. 
+We now try to annotate the cell with some annotated dataset.
 
-For each cell in the unknown dataset:
-1. Compute the Spearman correlation between its expression profile and that of each reference sample (measure of robustness to batch effects across datasets)
-2. Define per-label score as a fixed quantile (by default, 0.8) of the correlations across all samples with that label (accounts for differences in the number of reference samples for each label)
-3. Repeat the score calculation for all labels in the reference dataset. The label with the highest score is used as SingleR’s prediction for this cell.
+For each cell in the unknown dataset: 1.
+Compute the Spearman correlation between its expression profile and that of each reference sample (measure of robustness to batch effects across datasets) 2.
+Define per-label score as a fixed quantile (by default, 0.8) of the correlations across all samples with that label (accounts for differences in the number of reference samples for each label) 3.
+Repeat the score calculation for all labels in the reference dataset.
+The label with the highest score is used as SingleR's prediction for this cell.
 
 ### load required libraries
 
@@ -393,7 +424,7 @@ sce.data <- as.SingleCellExperiment(DietSeurat(data.filt))
 
 ## Predict cell type
 
-We will try to match my dataset against both human and mice annotations, because you never know. 
+We will try to match my dataset against both human and mice annotations, because you never know.
 
 ```{r cell_type_prediction,warning=F,message=F}
 
@@ -413,9 +444,7 @@ plotScoreHeatmap(predictions.mice)
 
 ```
 
-From these results, we can probably guess that the sample comes from mice (because more than half of the cells do not show any expression pattern that matches human annotations). I do not know if this procedure is valid to assess this stuff. 
+From these results, we can probably guess that the sample comes from mice (because more than half of the cells do not show any expression pattern that matches human annotations).
+I do not know if this procedure is valid to assess this stuff.
 Could this be liver tissue?
 I think so.
-
-
-
