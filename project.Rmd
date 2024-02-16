@@ -1,9 +1,12 @@
 ---
 title: "Single cell Project"
 author: "Vittoria Ossanna"
-output: html_notebook
-editor_options: 
-  markdown: 
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+editor_options:
+  markdown:
     wrap: sentence
 ---
 
@@ -39,7 +42,7 @@ In the current Section, I use standard methods of quality control and filtering 
 
 ## Filtering based on the percentage of mitocondrial, ribosomial and hemoglobin genes
 
-We filter out genes with increased number of genes that map to a mitocondrial genome because low-quality or dying cells often exhibit extensive mitochondrial contamination.
+We filter out genes with increased number of genes that map to a mitochondrial genome because low-quality or dying cells often exhibit extensive mitochondrial contamination.
 In the same manner we will calculate the proportion gene expression that comes from ribosomal proteins.
 Finally, with the same method we will calculate proportion hemoglobin genes, which can give an indication of red blood cell contamination.
 I believe that this control has no use in this project because I do not know the composition of my sample, therefore, avoiding to consider hemoglobin-related genes could lead to errors.
@@ -76,7 +79,7 @@ data <- subset(data, percent_ERCC < 5)
 A standard approach is to filter cells with low amount of reads as well as genes that are present in at least a certain amount of cells.
 Here we will only consider cells with at least 200 detected genes and genes need to be expressed in at least 3 cells.
 
-```{r}
+```{r, warning=F, message=F}
 # selecting all features and cells with minimum requirement
 selected_c <- WhichCells(data, expression = nFeature_RNA > 200)
 selected_f <- rownames(data)[Matrix::rowSums(data) > 3]
@@ -88,17 +91,10 @@ data.filt <- subset(data, features = selected_f, cells = selected_c)
 Extremely high number of detected genes could indicate doublets.
 However, depending on the cell type composition in my sample, I may have cells with higher number of genes (and also higher counts) from one cell type.
 
-I found these thresholds online [here](https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_01_qc.html#Calculate_QC)
+A clever method to identify a threshold for doublet consideration, is the following:
+we plot a violin plot the counts, we expect three areas: one in which we have the desired data, one in which we have too little counts, and one in which we have artifacts, as doublets. We use a graphical insights from this plot to find a threshold for doublets.
 
-```{r}
-# eliminate cells with an increased number of reads
-# to define the upper bound, we get the median number of counts. We wxclude from the final evaluation all cells that present a number of Counts greater than twice the median number of counts.
-# high.data1 <- WhichCells(data.filt, expression = nCount_RNA > 2 * median(data.filt$nCount_RNA))
-```
-
-how toma likes it: we plot a violin pf the counts, and we expect three areas: one in which we have the desired data, one in which we have too little counts, and one in which we have artifacts, as doublets. We use graphical insignt from this plot to find a threshold for doublets.
-
-```{r}
+```{r, warning=F}
 dim(data.filt)
 
 # from this plot we can define a lower and upper bound for out cleaning
@@ -123,17 +119,19 @@ dim(data.filt)
 Now we can plot some of the QC-features to get visual insights.
 
 ```{r}
-p1<- VlnPlot(data.filt, features = c("nFeature_RNA", "nCount_RNA", "percent_ERCC"), ncol = 2, pt.size = 0.01)
+library(gridExtra)
 
-p1
+p1<- VlnPlot(data.filt, features = c("nFeature_RNA"), pt.size = 0.01) + theme(legend.position = "none", axis.title.x = element_blank())
+p2<- VlnPlot(data.filt, features = c("nCount_RNA"), pt.size = 0.01) + theme(legend.position = "none", axis.title.x = element_blank())
+p3<- VlnPlot(data.filt, features = c("percent_ERCC"), pt.size = 0.01) + theme(legend.position = "none", axis.title.x = element_blank())
+
+gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
 ```
 
 ```{r qc_scatter, warning=F, message=F}
-
-plot1 <- FeatureScatter(data.filt, feature1 = "nCount_RNA", feature2 = "percent_ERCC")
-plot2 <- FeatureScatter(data.filt, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 <- FeatureScatter(data.filt, feature1 = "nCount_RNA", feature2 = "percent_ERCC") + theme(legend.position = "none") + labs(title = NULL)
+plot2 <- FeatureScatter(data.filt, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + theme(legend.position = "none") + labs(title = NULL)
 plot1 + plot2
-
 ```
 
 ## Filtering considerations
@@ -146,7 +144,7 @@ From the filtering based on presence of ERCC (excluding all cells that present m
 
 In the realm of data analysis, ensuring proper normalization for both inter-sample and intra-sample comparisons is crucial to obtain unbiased results.
 To achieve this goal in the current project, I employ a Log-Normalization method.
-This approach normalizes the measurement of feature expression for each cell based on the total expression, applies a scaling factor, and subsequently transforms the results using a logarithmic function.
+This approach normalizes the measurement of feature expression for each cell based on the total expression, applies a scaling factor (10,000 by default), and subsequently transforms the results using a logarithmic function.
 The resulting normalized data is stored within the `data.filt[["RNA"]]@data` container.
 
 ```{r, warning = F, message=F}
@@ -164,7 +162,7 @@ data.filt <- NormalizeData(data.filt,
 In this section, I isolate a subset of features characterized by significant cell-to-cell variability.
 Concentrating on these genes in subsequent analyses enhances the ability to emphasize biological signals within single-cell datasets.
 
-```{r, message = F}
+```{r, message = F, warning=F}
 data.filt <- FindVariableFeatures(data.filt, 
                                   selection.method = "vst", 
                                   nfeatures = 2000)
@@ -180,7 +178,7 @@ plot2
 
 ## Scaling
 
-In this section, i perform a linear transformation to the expresison levels of each gene.
+In this section, I perform a linear transformation to the expression levels of each gene.
 This is a standard pre-processing step which is often used before performing dimensionality reduction.
 Since - at the end of the day - we are interested in the genes which are expressed in the most different way - we perform this scaling only on the top 2000 genes (identified before).
 
@@ -207,28 +205,23 @@ PCA is useful for reducing data dimensionality, preserving essential information
 data.filt <- RunPCA(data.filt, 
                     features = VariableFeatures(object = data.filt))
 
-DimPlot(data.filt, reduction = "pca",label = F)
+DimPlot(data.filt, reduction = "pca",label = F) +  theme(legend.position = "none")
 ```
 
-PCA is highly interpretable and efficient, nevertheless it is often not a good idea to use such dimentionality reduction method with Single Cell data, due to their high sparsity and non-linear stucture of the data.
+PCA is highly interpretable and efficient, nevertheless it is often not a good idea to use such dimentionality reduction method with Single Cell data, due to their high sparsity and non-linear structure of the data.
 For this reason, I use two different non-linear method in the next section to overcome this problem.
 
 ### Define number of relevant components
 
 For next steps, I need to derive a proper number of dimensions to use.
-In order to do so, I use the euristic method of the elbow plot: a ranking of principle components based on the percentage of variance explained by each one.
+In order to do so, I use the heuristic method of the elbow plot: a ranking of principle components based on the percentage of variance explained by each one. In general, the higher the number of component I will use in the next steps, the better. The decrease in its numbers is strictly related to computational time.
 
 ```{r}
 ElbowPlot(data.filt, ndims = 50)
 ```
 
-From this plot, we cannot clearly see an elbow, but we can see a slow decrease of the deviation from component 7 on.
-Anyway, I consider a more conservative approach including in the next steps 14 dimensions.
-Or maybe I can keep 7?
-I REALLY DO NOT KNOW, I will try both and see what gives better results.
-From what I understand, the usage of tSNE or UMAP is simply slower than PCA, for this reason we use a number of relevant dimensions that we got from PCA in order to fasten up their processes.
-Since the overall dataset would consists in thousands of features, it does not make much sense only to use 7 (even in the elbow is there).
-If I use 30 or 50 feature, the process would be fasten up anyway woth a great improvement, without losing to much information.
+Since the overall dataset would consists in thousands of features, it does not make much sense only to use 7 (even in the elbow is probably there).
+If I use 50 feature, the process would be fasten up anyway with a great improvement, without losing to much information.
 
 ## t-SNE
 
@@ -241,33 +234,28 @@ This makes it a valuable tool for exploring and visualizing intricate data struc
 ```{r}
 data.filt <- RunTSNE(data.filt, 
                      dims = 1:50)
-DimPlot(data.filt, reduction = "tsne")
+DimPlot(data.filt, reduction = "tsne") + theme(legend.position = "none")
 ```
 
 ## UMAP
 
 UMAP (Uniform Manifold Approximation and Projection) is another dimensionality reduction technique used for visualizing and exploring high-dimensional data.
-It shares similarities with t-SNE but offers certain advantages.
-UMAP constructs a low-dimensional representation by first modeling the data as a topological graph.
-It focuses on preserving both local and global relationships among data points, leading to more balanced embeddings.
+It shares similarities with t-SNE but offers certain advantages. UMAP constructs a low-dimensional representation by first modeling the data as a topological graph. It focuses on preserving both local and global relationships among data points, leading to more balanced embeddings.
 UMAP is known for its efficiency and ability to handle larger datasets compared to t-SNE.
-It has gained popularity in various fields for tasks such as visualization, clustering, and data analysis, making it a valuable tool for uncovering patterns and structures within complex datasets.
-From 2018, UMAP is considered the gold standard for Single Cell analysis.
-In addition, it preserves better than t-SNE the local and global structure of the data.
-Nevertheless, UMAP results decrease their interpretability.
+It has gained popularity in various fields for tasks such as visualization, clustering, and data analysis, making it a valuable tool for uncovering patterns and structures within complex datasets. From 2018, UMAP is considered the gold standard for Single Cell analysis. In addition, it preserves better than t-SNE the local and global structure of the data. Nevertheless, UMAP results decrease their interpretability.
 
 ```{r, message=F, warning=F}
 data.filt <- RunUMAP(data.filt,
                      dims = 1:50)
 
-DimPlot(data.filt, reduction = "umap")
+DimPlot(data.filt, reduction = "umap") + theme(legend.position = "none")
 ```
 
 # 4. Clustering
 
-The clustering is based on a number of component defined during the PCA.
-The function implied construct a graph where each cell correspod to a node, and tries to find cliques where the archs are constructed based on the similarity of the expression pattern of two cells.
+The clustering is based on a number of component defined during the PCA. The function implied construct a graph where each cell correspond to a node, and tries to find cliques where the arches are constructed based on the similarity of the expression pattern of two cells.
 To cluster the cells we run modularity optimization to group cells into clusters.
+The resolution of the clustering is set to 0.5, which should allow us to reconstruct a smaller number of communities. 
 
 ```{r, warning=F, message=F}
 
@@ -282,9 +270,16 @@ We now plot again PCA, tSNE and UMAP with labels from clustering to graphically 
 
 ```{r}
 DimPlot(data.filt, reduction = "pca")
+```
+
+```{r}
 DimPlot(data.filt, reduction = "tsne")
+```
+
+```{r}
 DimPlot(data.filt, reduction = "umap")
 ```
+
 
 # 5. Identification of marker genes
 
@@ -307,22 +302,23 @@ list_of_markers = top_markers$gene
 
 ```
 
-Differently to what did in the tutorial, I deciced to decrease both min.ptc and logfc.threshold to 0.1.
-The first parameter it only has the function of making the process faster (I have all the time in the world), the second - if increased - also speeds up computation, but my decreasing it we can avoid missing weaker signal.
-Overall, lower values slow down computation but gets more accurate.
-IM NOT SURE THIS IS VALID, ASK TOMA
-
 ## Visualizing some marker genes
 
 Here, I am plotting a graphic visualization of some of the genes found in the previous summary that exhibit extremely relevant adjusted p-values and high log-fold change.
 
 ```{r}
-VlnPlot(data.filt, features = list_of_markers, pt.size = 0)
-# RidgePlot(data.filt,features = list_of_markers)
-FeaturePlot(data.filt, features = list_of_markers)
-DotPlot(data.filt, features = list_of_markers)
-
+DotPlot(data.filt, features = list_of_markers) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+```{r}
+FeaturePlot(data.filt, features = list_of_markers[0:4])
+FeaturePlot(data.filt, features = list_of_markers[5:9])
+```
+
+```{r}
+VlnPlot(data.filt, features = list_of_markers[0:4], pt.size = 0)
+VlnPlot(data.filt, features = list_of_markers[5:9], pt.size = 0)
+```
+
 
 # 6. Cell cycle analysis
 
@@ -370,10 +366,8 @@ head(data.filt[[]], 10)
 ```
 
 ```{r ,warning=F,message=F}
-RidgePlot(data.filt, features = c("Mcm5", "Pcna", "Hhgb2", "Cdk1"), ncol = 2)
+RidgePlot(data.filt, features = c("Mcm5", "Pcna", "Cdk1"), ncol = 3)
 ```
-
-Also this plot does not work because we do not have those specific markers in our feature set Running a PCA on cell cycle genes confirms that cells separate entirely by phase
 
 ```{r ,warning=F,message=F}
 
@@ -385,16 +379,16 @@ table(data.filt$Phase)
 
 By performing a PCA only on genes that are markers for s and g2 phase, we see that the majority of the cells are associated with G1 phase, as for the rest, we have a comparable number of cells in S and in G2 phase.
 From the PCA, we can derive that most of the cells (even if not in G1 phase) are spatially close to cells in G1.
-Also, we clarely see a hyperplane separating S and G2 phase (horizontally).
+Also, we clearly see a hyperplane separating S and G2 phase (horizontally).
 
 # 7. Annotation
 
 We now try to annotate the cell with some annotated dataset.
 
-For each cell in the unknown dataset: 1.
-Compute the Spearman correlation between its expression profile and that of each reference sample (measure of robustness to batch effects across datasets) 2.
-Define per-label score as a fixed quantile (by default, 0.8) of the correlations across all samples with that label (accounts for differences in the number of reference samples for each label) 3.
-Repeat the score calculation for all labels in the reference dataset.
+For each cell in the unknown dataset: 
+1. Compute the Spearman correlation between its expression profile and that of each reference sample (measure of robustness to batch effects across datasets) 
+2.Define per-label score as a fixed quantile (by default, 0.8) of the correlations across all samples with that label (accounts for differences in the number of reference samples for each label) 
+3.Repeat the score calculation for all labels in the reference dataset.
 The label with the highest score is used as SingleR's prediction for this cell.
 
 ### load required libraries
@@ -403,12 +397,11 @@ The label with the highest score is used as SingleR's prediction for this cell.
 library("SingleR")
 library("celldex") 
 library("SummarizedExperiment") 
-library("Seurat")
 ```
 
 ### load reference dataset
 
-Since I do not know if this dataset comes from a human or a mouse, which other dataset should I load?
+Since I did not know if this dataset comes from a human or a mouse, I loaded both (now I know that mice's genes have certain capital letters)
 
 ```{r load_reference,warning=F,message=F}
 # Loading Human Primary Cell Atlas dataset (Mabbott et al. 2013) as the reference 
@@ -438,13 +431,19 @@ predictions.mice <- SingleR(test=sce.data,
 Once assigned a label, we now use a heatplot to visualize the results.
 
 ```{r scores_heatmap, warning=F, message=F, fig.width=8, fig.height=5}
-
 plotScoreHeatmap(predictions.human)
-plotScoreHeatmap(predictions.mice)
+```
 
+```{r, warning=F, message=F, fig.width=8, fig.height=5}
+plotScoreHeatmap(predictions.mice)
 ```
 
 From these results, we can probably guess that the sample comes from mice (because more than half of the cells do not show any expression pattern that matches human annotations).
-I do not know if this procedure is valid to assess this stuff.
-Could this be liver tissue?
-I think so.
+In addition, the tissue in analysis is mainly composed by:
+- Hepatocytes: These are the main functional cells of the liver responsible for various metabolic activities, including detoxification, protein synthesis, and the production of bile.
+- Endothelial cells: These cells line the blood vessels within the liver and play a role in regulating blood flow and facilitating exchange of substances between the blood and liver tissue.
+- Epithelial cells: In the liver, epithelial cells are found lining the bile ducts, which transport bile produced by hepatocytes to the gallbladder and small intestine.
+- Fibroblasts: These are connective tissue cells found throughout the liver tissue. They produce collagen and other proteins that provide structural support to the liver.
+- Erythrocytes: While erythrocytes (red blood cells) are not typically considered part of liver tissue, they do pass through the liver within blood vessels, as the liver receives blood from the hepatic artery and portal vein.
+From these insights, we can probably guess that this tissue is probably hepatic.
+
