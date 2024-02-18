@@ -190,136 +190,6 @@ data.filt <- ScaleData(data.filt,
 
 # data.filt[["RNA"]]@scale.data[1:5, 1:10]
 ```
-
-# 3. Dimensionality reduction
-
-Dimensionality reduction techniques are employed to reduce data complexity in downstream analyses (e.g. clustering) and for data visualization.
-
-## PCA
-
-PCA, or Principal Component Analysis, is a technique used to simplify complex data by transforming it into a lower-dimensional representation while retaining as much original information as possible.
-It achieves this by finding a set of new variables called principal components that are uncorrelated and ranked by the amount of variance they explain.
-PCA is useful for reducing data dimensionality, preserving essential information, and revealing underlying patterns.
-
-```{r, message=F, warning=F}
-data.filt <- RunPCA(data.filt, 
-                    features = VariableFeatures(object = data.filt))
-
-DimPlot(data.filt, reduction = "pca",label = F) +  theme(legend.position = "none")
-```
-
-PCA is highly interpretable and efficient, nevertheless it is often not a good idea to use such dimentionality reduction method with Single Cell data, due to their high sparsity and non-linear structure of the data.
-For this reason, I use two different non-linear method in the next section to overcome this problem.
-
-### Define number of relevant components
-
-For next steps, I need to derive a proper number of dimensions to use.
-In order to do so, I use the heuristic method of the elbow plot: a ranking of principle components based on the percentage of variance explained by each one. In general, the higher the number of component I will use in the next steps, the better. The decrease in its numbers is strictly related to computational time.
-
-```{r}
-ElbowPlot(data.filt, ndims = 50)
-```
-
-Since the overall dataset would consists in thousands of features, it does not make much sense only to use 7 (even in the elbow is probably there).
-If I use 50 feature, the process would be fasten up anyway with a great improvement, without losing to much information.
-
-## t-SNE
-
-t-SNE (t-Distributed Stochastic Neighbor Embedding) is a dimensionality reduction technique used for visualizing complex high-dimensional data.
-It works by calculating pairwise similarities between data points, emphasizing close similarities and using Gaussian distributions to define relationships.
-It then maps the data to a lower-dimensional space (typically two dimensions) while preserving these pairwise similarities.
-t-SNE employs an iterative optimization process to position data points in the lower-dimensional map, ensuring that similar data points remain close, while dissimilar ones are separated.
-This makes it a valuable tool for exploring and visualizing intricate data structures and identifying clusters or patterns within the data.
-
-```{r}
-data.filt <- RunTSNE(data.filt, 
-                     dims = 1:50)
-DimPlot(data.filt, reduction = "tsne") + theme(legend.position = "none")
-```
-
-## UMAP
-
-UMAP (Uniform Manifold Approximation and Projection) is another dimensionality reduction technique used for visualizing and exploring high-dimensional data.
-It shares similarities with t-SNE but offers certain advantages. UMAP constructs a low-dimensional representation by first modeling the data as a topological graph. It focuses on preserving both local and global relationships among data points, leading to more balanced embeddings.
-UMAP is known for its efficiency and ability to handle larger datasets compared to t-SNE.
-It has gained popularity in various fields for tasks such as visualization, clustering, and data analysis, making it a valuable tool for uncovering patterns and structures within complex datasets. From 2018, UMAP is considered the gold standard for Single Cell analysis. In addition, it preserves better than t-SNE the local and global structure of the data. Nevertheless, UMAP results decrease their interpretability.
-
-```{r, message=F, warning=F}
-data.filt <- RunUMAP(data.filt,
-                     dims = 1:50)
-
-DimPlot(data.filt, reduction = "umap") + theme(legend.position = "none")
-```
-
-# 4. Clustering
-
-The clustering is based on a number of component defined during the PCA. The function implied construct a graph where each cell correspond to a node, and tries to find cliques where the arches are constructed based on the similarity of the expression pattern of two cells.
-To cluster the cells we run modularity optimization to group cells into clusters.
-The resolution of the clustering is set to 0.5, which should allow us to reconstruct a smaller number of communities. 
-
-```{r, warning=F, message=F}
-
-data.filt <- FindNeighbors(data.filt, dims = 1:50)
-data.filt <- FindClusters(data.filt, resolution = 0.5)
-
-head(Idents(data.filt), 5)
-
-```
-
-We now plot again PCA, tSNE and UMAP with labels from clustering to graphically visualize the clustering procedure.
-
-```{r}
-DimPlot(data.filt, reduction = "pca")
-```
-
-```{r}
-DimPlot(data.filt, reduction = "tsne")
-```
-
-```{r}
-DimPlot(data.filt, reduction = "umap")
-```
-
-
-# 5. Identification of marker genes
-
-We make use of differential expression analysis to identify marker genes.
-I will perform a differential expression analysis of each group against every other group (1 vs all).
-
-```{r all_markers, warning=F, message=F}
-
-markers <- FindAllMarkers(data.filt, 
-                               only.pos = TRUE, 
-                               min.pct = 0.25, 
-                               logfc.threshold = 0.25)
-
-top_markers <- markers %>%
-    group_by(cluster) %>%
-    # order(pbmc_markers$p_val_adj) %>%
-    slice_max(n=1,order_by=avg_log2FC)
-
-list_of_markers = top_markers$gene
-
-```
-
-## Visualizing some marker genes
-
-Here, I am plotting a graphic visualization of some of the genes found in the previous summary that exhibit extremely relevant adjusted p-values and high log-fold change.
-
-```{r}
-DotPlot(data.filt, features = list_of_markers) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
-```{r}
-FeaturePlot(data.filt, features = list_of_markers[0:4])
-FeaturePlot(data.filt, features = list_of_markers[5:9])
-```
-
-```{r}
-VlnPlot(data.filt, features = list_of_markers[0:4], pt.size = 0)
-VlnPlot(data.filt, features = list_of_markers[5:9], pt.size = 0)
-```
-
-
 # 6. Cell cycle analysis
 
 The presence of cell cycle within scRNAseq data may introduce variability.
@@ -366,20 +236,169 @@ head(data.filt[[]], 10)
 ```
 
 ```{r ,warning=F,message=F}
-RidgePlot(data.filt, features = c("Mcm5", "Pcna", "Cdk1"), ncol = 3)
+RidgePlot(data.filt, features = c("Mcm5"))
+RidgePlot(data.filt, features = c("Pcna"))
+RidgePlot(data.filt, features = c("Cdk1"))
+# Mcm5 initiation of DNA replication (G1/S)
+# Pcna leading strand synthesis during DNA replication (S)
+# Cdk1 M-phase promoting factor (G2M)
 ```
 
 ```{r ,warning=F,message=F}
 
-data.filt <- RunPCA(data.filt, features = c(s_genes, g2m_genes),verbose=F)
-DimPlot(data.filt, reduction="pca")
+data.filt <- RunPCA(data.filt, verbose=F)
+DimPlot(data.filt, reduction="pca", group.by = "Phase")
 table(data.filt$Phase)
 
 ```
 
 By performing a PCA only on genes that are markers for s and g2 phase, we see that the majority of the cells are associated with G1 phase, as for the rest, we have a comparable number of cells in S and in G2 phase.
 From the PCA, we can derive that most of the cells (even if not in G1 phase) are spatially close to cells in G1.
-Also, we clearly see a hyperplane separating S and G2 phase (horizontally).
+Also, we clearly see an un-even distribution of G2M and S data that could be strictly associated to their phase state.
+
+## Regress out cell cycle scores during data scaling
+
+We try to eliminate ('regress out') this factor of diversity from the dataset. Seurat, for each gene, constructs a model to understand the connection between gene expression and the S and G2M cell cycle scores. The adjusted expression matrix, obtained by analyzing the scaled residuals of this model, serves as a 'corrected' dataset for subsequent dimensional reduction. Following this regression step, performing PCA on the variable genes no longer yields components linked to the cell cycle.
+
+```{r}
+
+data.filt <- ScaleData(data.filt, vars.to.regress = c("S.Score", "G2M.Score"), features = rownames(data.filt))
+data.filt <- RunPCA(data.filt, features = VariableFeatures(data.filt), nfeatures.print = 10)
+```
+```{r ,warning=F,message=F}
+
+data.filt <- RunPCA(data.filt, verbose=F)
+DimPlot(data.filt, reduction="pca", group.by = "Phase")
+
+```
+
+
+# 3. Dimensionality reduction
+
+Dimensionality reduction techniques are employed to reduce data complexity in downstream analyses (e.g. clustering) and for data visualization.
+
+## PCA
+
+PCA, or Principal Component Analysis, is a technique used to simplify complex data by transforming it into a lower-dimensional representation while retaining as much original information as possible.
+It achieves this by finding a set of new variables called principal components that are uncorrelated and ranked by the amount of variance they explain.
+PCA is useful for reducing data dimensionality, preserving essential information, and revealing underlying patterns.
+
+```{r, message=F, warning=F}
+data.filt <- RunPCA(data.filt)
+
+DimPlot(data.filt, reduction = "pca",label = F, group.by = "old.ident") +  theme(legend.position = "none")
+```
+
+PCA is highly interpretable and efficient, nevertheless it is often not a good idea to use such dimentionality reduction method with Single Cell data, due to their high sparsity and non-linear structure of the data.
+For this reason, I use two different non-linear method in the next section to overcome this problem.
+
+### Define number of relevant components
+
+For next steps, I need to derive a proper number of dimensions to use.
+In order to do so, I use the heuristic method of the elbow plot: a ranking of principle components based on the percentage of variance explained by each one. In general, the higher the number of component I will use in the next steps, the better. The decrease in its numbers is strictly related to computational time.
+
+```{r}
+ElbowPlot(data.filt, ndims = 50)
+```
+
+Since the overall dataset would consists in thousands of features, it does not make much sense only to use 7 (even in the elbow is probably there).
+If I use 50 feature, the process would be fasten up anyway with a great improvement, without losing to much information.
+
+## t-SNE
+
+t-SNE (t-Distributed Stochastic Neighbor Embedding) is a dimensionality reduction technique used for visualizing complex high-dimensional data.
+It works by calculating pairwise similarities between data points, emphasizing close similarities and using Gaussian distributions to define relationships.
+It then maps the data to a lower-dimensional space (typically two dimensions) while preserving these pairwise similarities.
+t-SNE employs an iterative optimization process to position data points in the lower-dimensional map, ensuring that similar data points remain close, while dissimilar ones are separated.
+This makes it a valuable tool for exploring and visualizing intricate data structures and identifying clusters or patterns within the data.
+
+```{r}
+data.filt <- RunTSNE(data.filt, 
+                     dims = 1:50)
+DimPlot(data.filt, reduction = "tsne", group.by = "old.ident") + theme(legend.position = "none")
+```
+
+## UMAP
+
+UMAP (Uniform Manifold Approximation and Projection) is another dimensionality reduction technique used for visualizing and exploring high-dimensional data.
+It shares similarities with t-SNE but offers certain advantages. UMAP constructs a low-dimensional representation by first modeling the data as a topological graph. It focuses on preserving both local and global relationships among data points, leading to more balanced embeddings.
+UMAP is known for its efficiency and ability to handle larger datasets compared to t-SNE.
+It has gained popularity in various fields for tasks such as visualization, clustering, and data analysis, making it a valuable tool for uncovering patterns and structures within complex datasets. From 2018, UMAP is considered the gold standard for Single Cell analysis. In addition, it preserves better than t-SNE the local and global structure of the data. Nevertheless, UMAP results decrease their interpretability.
+
+```{r, message=F, warning=F}
+data.filt <- RunUMAP(data.filt,
+                     dims = 1:50)
+
+DimPlot(data.filt, reduction = "umap", group.by = "old.ident") + theme(legend.position = "none")
+```
+
+# 4. Clustering
+
+The clustering is based on a number of component defined during the PCA. The function implied construct a graph where each cell correspond to a node, and tries to find cliques where the arches are constructed based on the similarity of the expression pattern of two cells.
+To cluster the cells we run modularity optimization to group cells into clusters.
+The resolution of the clustering is set to 0.5, which should allow us to reconstruct a smaller number of communities. 
+
+```{r, warning=F, message=F}
+
+data.filt <- FindNeighbors(data.filt, dims = 1:50)
+data.filt <- FindClusters(data.filt, resolution = 0.5)
+
+head(Idents(data.filt), 5)
+
+```
+
+We now plot again PCA, tSNE and UMAP with labels from clustering to graphically visualize the clustering procedure.
+
+```{r}
+DimPlot(data.filt, reduction = "pca")
+```
+
+```{r}
+DimPlot(data.filt, reduction = "tsne")
+```
+
+```{r}
+DimPlot(data.filt, reduction = "umap")
+```
+
+
+# 5. Identification of marker genes
+
+We make use of differential expression analysis to identify marker genes.
+I will perform a differential expression analysis of each group against every other group (1 vs all).
+
+```{r all_markers, warning=F, message=F}
+
+markers <- FindAllMarkers(data.filt, 
+                               only.pos = TRUE, # use only positive markers
+                               min.pct = 0.25,  # only genes that are detected in minimum 25%
+                               logfc.threshold = 0.25) # test only genes with minimum 0.25 fold-difference
+
+top_markers <- markers %>%
+    group_by(cluster) %>%
+    slice_max(n=1,order_by=avg_log2FC)
+
+list_of_markers = top_markers$gene
+
+```
+
+## Visualizing some marker genes
+
+Here, I am plotting a graphic visualization of some of the genes found in the previous summary that exhibit extremely relevant adjusted p-values and high log-fold change.
+
+```{r}
+DotPlot(data.filt, features = list_of_markers) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+FeaturePlot(data.filt, features = list_of_markers[0:4])
+FeaturePlot(data.filt, features = list_of_markers[5:8])
+FeaturePlot(data.filt, features = list_of_markers[9:10])
+```
+
+```{r}
+VlnPlot(data.filt, features = list_of_markers[0:5], pt.size = 0)
+VlnPlot(data.filt, features = list_of_markers[6:10], pt.size = 0)
+```
 
 # 7. Annotation
 
